@@ -29,11 +29,19 @@ def transformerEncoder(inputShape, L, kqv_input_dim, num_heads, ff_dim, drop_rat
     X = X_in
     
     X = embed_layer(X)
+
+    out2 = Dense(256)(Flatten()(X))
+    out2 = ELU(1.0)(out2)
+    process1 = Dense(512)
+
     for l in range(L):
         enc = Encoder(kqv_input_dim, num_heads, ff_dim, drop_rate)
         X = enc(X)
+        out2_l = process1(Flatten()(X))
+        out2 = out2 + Dense(256)(out2_l)
+        out2 = ELU(1.0)(out2)
     
-    model = Model(inputs = X_in, outputs = X)
+    model = Model(inputs = X_in, outputs = [X, out2])
     return model
     #make transformer encoder model w/ positional encodings as described in paper
 def convolutions(inputShape):#TODO
@@ -88,7 +96,7 @@ def skip_connect(inputShape, numStart, mid, drop_rate):
 
     
 def feed_forward(inputShape, outputNum):
-    drop_rate = 0.2
+    drop_rate = 0.1
     
     X_in = Input(shape = inputShape)
     flat = Flatten()(X_in)
@@ -122,7 +130,8 @@ def feed_forward(inputShape, outputNum):
 
     X = Concatenate()([X, Dense(256)(X_), X_0])
 
-    predictions = Dense(outputNum, activation = 'softmax')(X)
+    predictions = X
+    #predictions = Dense(outputNum, activation = 'softmax')(X)
 
     model = Model(inputs = X_in, outputs = predictions)
 
@@ -137,9 +146,9 @@ def imageTransformer(inputShape, outputNum):
     #TODO: define transformer params up here
     numLayers = 4#continue transformer params here (num_heads, FF size, dropout, etc.)
     kqv_input_dim = 512
-    num_heads = 8
-    ff_dim = 1024
-    drop_rate = 0.2
+    num_heads = 16
+    ff_dim = 2048
+    drop_rate = 0.1
 
     ###end transformer stuff
 
@@ -177,7 +186,7 @@ def imageTransformer(inputShape, outputNum):
     print("shape is")
     print(X_patch_flattened.shape)
 
-    X = transformer_block(X_patch_flattened)
+    X, add_end = transformer_block(X_patch_flattened)
 
     
     #inputShape3 = tf.shape(X)
@@ -188,6 +197,14 @@ def imageTransformer(inputShape, outputNum):
     print(vanilla.summary())
 
     output= vanilla(X)
+
+    output = Concatenate()([output, add_end])
+
+    connect = skip_connect(output.shape[1:], output.shape[1], output.shape[1], 0.2)
+
+    output = connect(output)
+
+    output = Dense(outputNum, activation = 'softmax')(output)
 
     model = Model(inputs = X_in , outputs = output)
 
